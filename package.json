@@ -1,0 +1,23 @@
+{
+  "name": "bitlazarus",
+  "version": "0.1.0",
+  "description": "Revive dead records via WebSeed, content-address them, and prove they existed unaltered. Open-source public-good tool. No money movement.",
+  "type": "module",
+  "bin": {
+    "blz": "bin/blz.mjs"
+  },
+  "scripts": {
+    "start": "node bin/blz.mjs",
+    "test": "node --test",
+    "test:revival": "node tests/revival.mjs",
+    "test:mirror": "node tests/mirror.mjs"
+  },
+  "license": "Apache-2.0",
+  "dependencies": {
+    "commander": "^15.0.0",
+    "create-torrent": "^6.1.2",
+    "opentimestamps": "^0.4.9",
+    "parse-torrent": "^11.0.21",
+    "webtorrent": "^3.0.16"
+  }
+}

@@ -1,0 +1,15 @@
+node_modules/
+*.log
+
+# ローカルの実行成果物（コミットしない）
+/data/
+/catalog/
+_t/
+
+# 手動スモークで作られる可能性のあるディレクトリ
+/cat*/
+/data[0-9]*/
+/up*/
+/mir*/
+/op*/
+index.json
