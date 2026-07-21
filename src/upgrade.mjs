@@ -1,5 +1,5 @@
-// カタログの保留中タイムスタンプを走査し、Bitcoin の確認に畳み込む。
-// cron 等で定期実行する。確認できたら manifest にも反映する。
+// Scan the catalog's pending timestamps and fold them into Bitcoin confirmations.
+// Run on a schedule, e.g. via cron. Once confirmed, reflect it in the manifest too.
 import fs from 'node:fs'
 import path from 'node:path'
 import { upgradeOts, verifyOts } from './timestamp.mjs'

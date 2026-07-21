@@ -1,11 +1,11 @@
-// 取り込みゲート。公開シードの前に、既知の禁止ハッシュと照合する。
-// 重要: CSAM 分類器は絶対に自作しない。ここは既知の悪いものの参照リストに照合するだけ。
-// 差し口は共通で、実運用では PhotoDNA / NCMEC / Thorn の知覚ハッシュを差す。
-// 既定は SHA-256 の完全一致 denylist（実物のCSAMハッシュは扱わない・置かない）。
+// Intake gate. Before public seeding, match against known blocked hashes.
+// Important: never build a CSAM classifier ourselves. Here we only match against a reference list of known-bad items.
+// The interface is generic; in real operation, plug in the perceptual hashes of PhotoDNA / NCMEC / Thorn.
+// The default is an exact-match SHA-256 denylist (we neither handle nor store actual CSAM hashes).
 import fs from 'node:fs'
 
-// SHA-256 の16進を1行ずつ書いたブロックリストを読む。
-// 有効な行が0件なら null を返す（＝照合不能）。空リストで全部を cleared にしない（fail-closed）。
+// Read a blocklist with one hex SHA-256 per line.
+// Return null if there are 0 valid lines (= cannot match). An empty list must not clear everything (fail-closed).
 export function loadBlocklist(file) {
   if (!file) return null
   const set = new Set()
@@ -18,14 +18,14 @@ export function loadBlocklist(file) {
   return set.size > 0 ? set : null
 }
 
-// 照合。一致したら cleared=false かつ matched=true。ブロックリスト未設定/空は UNVERIFIED。
+// Matching. On a match, cleared=false and matched=true. An unset/empty blocklist is UNVERIFIED.
 export function screen(sha256hex, blocklist, provider = 'sha256-denylist') {
-  if (!blocklist) return { cleared: false, matched: false, provider: null, note: 'UNVERIFIED — 有効なブロックリストが無い。公開シード前に照合が必須' }
+  if (!blocklist) return { cleared: false, matched: false, provider: null, note: 'UNVERIFIED — no valid blocklist. Matching is required before public seeding' }
   const matched = blocklist.has(String(sha256hex).toLowerCase())
   return { cleared: !matched, matched, provider }
 }
 
-// seed が公開してよいか。fail-closed。cleared のものだけ。古い文字列や未設定は cleared 扱いにしない。
+// Whether seed may publish it. Fail-closed. Only cleared items. Legacy strings or an unset field are not treated as cleared.
 export function isCleared(manifest) {
   return !!(manifest && manifest.intake && manifest.intake.status === 'cleared')
 }

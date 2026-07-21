@@ -1,5 +1,5 @@
-// 存在証明のタイムスタンプ層。OpenTimestamps でハッシュを刻む。
-// ネットワークに依存するため best-effort。失敗しても道具は止めず、状態だけ正直に記録する。
+// The timestamp layer for proof of existence. Stamp the hash with OpenTimestamps.
+// Best-effort, since it depends on the network. On failure the tool does not stop; it just records the state honestly.
 import OpenTimestamps from 'opentimestamps'
 const { DetachedTimestampFile, Ops } = OpenTimestamps
 
@@ -29,7 +29,7 @@ export async function verifyOts(sha256hex, otsBytes) {
   }
 }
 
-// 保留中の証明を、確認済みのカレンダー証明（最終的に Bitcoin）に畳み込む。
+// Fold a pending proof into a confirmed calendar proof (ultimately Bitcoin).
 export async function upgradeOts(otsBytes) {
   try {
     const detached = DetachedTimestampFile.deserialize([...otsBytes])

@@ -1,43 +1,43 @@
 # bitlazarus (blz)
 
-死んだ記録を蘇らせ、内容で住所を付け、それが存在したことを証明する、オープンソースの公共財ツール。
+An open-source public-good tool that revives dead records, addresses them by their content, and proves that they existed.
 
-これは事業ではない。非営利に支えられた道具だ。運営は金の移動に一切関与しない。決済もエスクローも手数料の通過も取引市場も作らない。
+This is not a business. It is a tool backed by a nonprofit. The operators take no part in moving money. We build no payments, no escrow, no fee pass-through, and no marketplace.
 
-## 主張の範囲
+## Scope of our claims
 
-私たちが証明するのは **存在と完全性** だけだ。この bitstream が時刻 T に存在し、以降改ざんされていないこと。**本物性(provenance)は証明しない**。「この映像は現実の出来事だ」とは言わない。それは捕捉時のハードウェア証明が要り、C2PA など既存勢のものだ。私たちは C2PA の競合ではなく、その下に敷く補完の層。C2PA は file に何が起きたかを証明し、私たちは file が今も確かに存在し、誰にも静かに消させないことを保証する。
+We prove only **existence and integrity**: that this bitstream existed at time T and has not been altered since. We do **not** prove provenance. We do not claim "this footage is a real event." That requires hardware attestation at the moment of capture, which is the domain of established players like C2PA. We are not a competitor to C2PA but a complementary layer beneath it. C2PA proves what happened to a file; we guarantee that the file still exists and that no one can quietly erase it.
 
-## 何をするか
+## What it does
 
-- **内容アドレス化**: ファイルから決定的に infohash を作る。住所が中身の指紋なので、同じバイトを持つ誰でも、過去に配られたリンクをそのまま蘇らせられる。
-- **完全性**: SHA-256。
-- **存在証明**: OpenTimestamps で Bitcoin にハッシュを刻む。検証に私たちは要らない。証明は組織より長生きする。
-- **配信と蘇生**: WebSeed(BEP-19) と常時稼働のシードピア。peer が全滅しても origin が配り続けるので、死んだ配布物が生き返る。
+- **Content addressing**: deterministically derive an infohash from a file. Because the address is a fingerprint of the content, anyone who has the same bytes can revive a previously shared link as-is.
+- **Integrity**: SHA-256.
+- **Proof of existence**: stamp the hash onto Bitcoin via OpenTimestamps. You do not need us to verify it. The proof outlives the organization.
+- **Distribution and revival**: WebSeed (BEP-19) plus an always-on seed peer. Even if every peer disappears, the origin keeps serving, so a dead distribution comes back to life.
 
-## 使い方
+## Usage
 
 ```
 blz ingest <file> --webseed http://your-origin
-  -> 内容アドレス化、SHA-256、OpenTimestamps、WebSeed マグネット、証明書を作る
+  -> Content-address, SHA-256, OpenTimestamps, WebSeed magnet, and certificate.
 
 blz verify <manifest.json> <file>
-  -> infohash と SHA-256 と OpenTimestamps を再検証する。改ざんは即検出。
+  -> Re-verify the infohash, SHA-256, and OpenTimestamps. Tampering is detected instantly.
 
 blz seed --port 6969
-  -> アンカーノード。カタログを常時シードし、WebSeed origin を提供する。
+  -> Anchor node. Continuously seeds the catalog and serves the WebSeed origin.
 ```
 
-## 取り込みの必須ゲート（動かせない）
+## Mandatory intake gate (non-negotiable)
 
-公開シードの前に、業界標準の CSAM ハッシュ照合(PhotoDNA / NCMEC / Thorn)を必ず通す。自前の分類器は絶対に作らない。取り込みは審査済みの提携元に限る。一般公開のアップロード窓口は開かない。米国拠点なら検出時の NCMEC 報告が法的義務。ここは弁護士と対応する。現状 `intake` フィールドは UNVERIFIED で、seed は警告を出す。実際の照合を組み込むまで公開シードはしない。
+Before any public seeding, everything must pass industry-standard CSAM hash matching (PhotoDNA / NCMEC / Thorn). We never build our own classifier. Intake is limited to vetted partner sources. We do not open a public upload endpoint. For a US-based operator, reporting to NCMEC on detection is a legal obligation; we handle this with a lawyer. Today the `intake` field is UNVERIFIED and `seed` prints a warning. We do not seed publicly until real matching is integrated.
 
-## 正直な限界
+## Honest limitations
 
-- WebSeed の蘇生は、私たちかミラーが実際にバイトを持つ時だけ効く。infohash だけでは、誰も持っていないデータは戻らない。失われたバイトを再生成はしない。
-- OpenTimestamps が証明するのは、このバイトがこの日付に存在した、という一点だけ。真正性や証拠保全連鎖ではない。
-- アンカーノード一台は単一障害点であり単一の法的標的。他法域のミラーが二つ以上、実際に複製を持って初めて本当の冗長性になる。
+- WebSeed revival only works when we or a mirror actually hold the bytes. An infohash alone cannot bring back data that no one has. We do not regenerate lost bytes.
+- OpenTimestamps proves only one thing: that these bytes existed on this date. It is not authenticity or chain of custody.
+- A single anchor node is a single point of failure and a single legal target. Real redundancy only begins when two or more mirrors in other jurisdictions actually hold copies.
 
-## ライセンス（予定）
+## License (planned)
 
-シードとWebSeedの本体は AGPL-3.0-or-later、クライアントは Apache-2.0、infohash とタイムスタンプの仕様とカタログは CC0。
+The seed and WebSeed core are AGPL-3.0-or-later, the client is Apache-2.0, and the infohash/timestamp specifications and catalog are CC0.

@@ -1,4 +1,4 @@
-// ミラーの実証。運営が消えても、独立ミラーが記録を生かし続ける。
+// Demonstration of mirroring. Even if the operator disappears, an independent mirror keeps the record alive.
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -30,29 +30,29 @@ async function main() {
   const PA = 6981, PB = 6982
   const bl = new Set(['0'.repeat(64)])
 
-  // 1) 運営: origin A で取り込み・配信
+  // 1) Operator: ingest and serve at origin A
   const m = await ingest(f, { webseedBase: `http://127.0.0.1:${PA}`, catalogDir: path.join(d, 'opcat'), dataDir: path.join(d, 'opdata'), stamp: false, blocklist: bl })
   let A = await serve(path.join(d, 'opdata'), new Set([m.infoHash]), PA)
-  console.log(`運営 origin A 稼働 infohash=${m.infoHash} intake=${m.intake.status}`)
+  console.log(`Operator origin A running infohash=${m.infoHash} intake=${m.intake.status}`)
 
-  // 2) ボランティア: 隔離取得・自己検証・自己再審査。origin B を足す
+  // 2) Volunteer: fetch in isolation, self-verify, self-rescreen. Add origin B
   const r = await mirror({ srcCatalogDir: path.join(d, 'opcat'), originBase: `http://127.0.0.1:${PB}`, dataDir: path.join(d, 'mirdata'), catalogDir: path.join(d, 'mircat'), blocklist: bl, allowLocalWebseed: true })
   const mirredSha = sha(path.join(d, 'mirdata', m.infoHash, 'evidence.bin'))
   const p2 = r.mirrored === 1 && mirredSha === originSha
-  console.log(`2) ミラー取得+自己検証+自己審査    : ${p2 ? 'PASS 一致・cleared' : 'FAIL'}`)
+  console.log(`2) Mirror fetch + self-verify + self-screen : ${p2 ? 'PASS match, cleared' : 'FAIL'}`)
 
-  // 3) 運営(A)を停止＝接収
+  // 3) Stop the operator (A) = seizure
   await new Promise(x => A.close(x))
-  // 4) ミラー(B)だけ稼働。ミラーの .torrent（B を含む）でダウンロード
+  // 4) Only the mirror (B) is up. Download using the mirror's .torrent (which includes B)
   const B = await serve(path.join(d, 'mirdata'), buildClearedSet(path.join(d, 'mircat')), PB)
   const mirTorrent = fs.readFileSync(path.join(d, 'mircat', m.infoHash + '.torrent'))
   const dl = await download(mirTorrent, path.join(d, 'out'))
   const p4 = dl.done && dl.sha === originSha
-  console.log(`4) 運営消滅後・ミラーBから完走     : ${p4 ? 'PASS 別運営が記録を生かした' : 'FAIL'}`)
+  console.log(`4) Operator gone, completed from mirror B   : ${p4 ? 'PASS another operator kept the record alive' : 'FAIL'}`)
   await new Promise(x => B.close(x))
 
   const ok = p2 && p4
-  console.log(`\n総合: ${ok ? 'PASS 単一運営の消滅を、独立ミラーが生き延びさせる' : 'FAIL'}`)
+  console.log(`\nOverall: ${ok ? 'PASS an independent mirror survives the loss of a single operator' : 'FAIL'}`)
   process.exit(ok ? 0 : 1)
 }
 main()

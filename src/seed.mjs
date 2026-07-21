@@ -1,30 +1,30 @@
-// アンカーノード。審査を通った(cleared)項目だけを配信する。
-// WebSeed の HTTP origin は cleared の infohash のバイトだけを配る（fail-closed をここでも守る）。
+// Anchor node. Serves only items that passed screening (cleared).
+// The WebSeed HTTP origin serves bytes only for cleared infohashes (keeping fail-closed here too).
 import fs from 'node:fs'
 import path from 'node:path'
 import http from 'node:http'
 import WebTorrent from 'webtorrent'
 import { isCleared } from './intake.mjs'
 
-// マニフェストを安全に読む。壊れた1件でバッチ全体を止めない。
+// Read manifests safely. One corrupt file must not stop the whole batch.
 function readManifests(catalogDir) {
   const out = []
   const files = fs.existsSync(catalogDir) ? fs.readdirSync(catalogDir).filter(f => f.endsWith('.json') && f !== 'index.json') : []
   for (const f of files) {
     try { out.push({ file: f, m: JSON.parse(fs.readFileSync(path.join(catalogDir, f), 'utf8')) }) }
-    catch { console.log('skip (壊れたマニフェスト):', f) }
+    catch { console.log('skip (corrupt manifest):', f) }
   }
   return out
 }
 
-// cleared の infohash 集合。origin はこの集合にあるものだけ配る。
+// The set of cleared infohashes. The origin serves only what is in this set.
 export function buildClearedSet(catalogDir) {
   const set = new Set()
   for (const { m } of readManifests(catalogDir)) if (isCleared(m)) set.add(m.infoHash.toLowerCase())
   return set
 }
 
-// 内容アドレスで安全に配る origin。パス /<infohash>/<name> だけ、cleared のものだけ。
+// A content-addressed origin that serves safely. Only the path /<infohash>/<name>, and only cleared items.
 export function makeOrigin(dataDir, clearedSet) {
   const root = path.resolve(dataDir)
   return (req, res) => {
@@ -71,18 +71,18 @@ export async function seed({ catalogDir, dataDir, port, host }) {
   server.on('clientError', (e, sock) => { try { sock.destroy() } catch {} })
   await new Promise(r => host ? server.listen(port, host, r) : server.listen(port, r))
   const a = server.address()
-  console.log(`WebSeed origin 稼働 ${a.address}:${a.port}（公開の配信先）`)
+  console.log(`WebSeed origin running ${a.address}:${a.port} (public serving endpoint)`)
 
   const client = new WebTorrent()
   let served = 0, withheld = 0
   for (const { m } of readManifests(catalogDir)) {
-    if (!isCleared(m)) { console.log('公開保留 (intake 未通過):', m.name); withheld++; continue }
+    if (!isCleared(m)) { console.log('withheld (intake not passed):', m.name); withheld++; continue }
     const fp = path.join(dataDir, m.infoHash, m.name)
     if (!fs.existsSync(fp)) { console.log('skip (bytes missing):', m.name); continue }
     client.seed(fp, { name: m.name, pieceLength: m.pieceLength, urlList: m.webseeds, announceList: [] },
       t => console.log('seeding', t.infoHash, m.name))
     served++
   }
-  console.log(`アンカーノード稼働。公開 ${served} 件、intake 保留 ${withheld} 件。Ctrl-C で停止。`)
+  console.log(`Anchor node running. Serving ${served}, ${withheld} withheld for intake. Ctrl-C to stop.`)
   return { server, client }
 }

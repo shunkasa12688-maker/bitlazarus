@@ -8,7 +8,7 @@ import { buildIndex, writeIndex, loadIndex } from '../src/catalog.mjs'
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'blz-cat-'))
 
-test('buildIndex は cleared 項目だけを入れる', async () => {
+test('buildIndex includes only cleared items', async () => {
   const d = tmp()
   const cat = path.join(d, 'cat'), data = path.join(d, 'data')
   const a = path.join(d, 'a.txt'); fs.writeFileSync(a, 'cleared one')
@@ -21,7 +21,7 @@ test('buildIndex は cleared 項目だけを入れる', async () => {
   assert.ok(idx.entries[0].infoHash)
 })
 
-test('writeIndex と loadIndex が往復する', async () => {
+test('writeIndex and loadIndex round-trip', async () => {
   const d = tmp()
   const cat = path.join(d, 'cat'), data = path.join(d, 'data')
   const a = path.join(d, 'a.txt'); fs.writeFileSync(a, 'x')

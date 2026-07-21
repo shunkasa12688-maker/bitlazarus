@@ -1,5 +1,5 @@
-// ボランティアのミラー。上流を信頼せず、隔離して取得し、自分で内容アドレスを検証し、
-// 自分で再審査し、自分の origin を足して再配信可能にする。fail-closed。
+// Volunteer mirror. Trust no upstream: fetch in isolation, verify the content address yourself,
+// re-screen it yourself, and add your own origin so it can be re-served. Fail-closed.
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -10,7 +10,7 @@ import { sha256File, infohashOf, safeName, PIECE_LENGTH } from './core.mjs'
 import { isCleared, screen } from './intake.mjs'
 import { verifyOts } from './timestamp.mjs'
 
-// SSRF 防御。信頼できない .torrent の webseed が内部/ループバックを指していたら弾く。
+// SSRF defense. Reject webseeds from an untrusted .torrent that point to internal/loopback addresses.
 function allowedWebseed(url, allowLocal) {
   try {
     const u = new URL(url)
@@ -29,12 +29,12 @@ function torrentWith(filePath, name, webseeds) {
 async function acquire(torrentBuf, outDir, { maxSize, allowLocal }, timeoutMs = 30000) {
   const parsed = await parseTorrent(torrentBuf)
   parsed.urlList = (parsed.urlList || []).filter(u => allowedWebseed(u, allowLocal))
-  if (!parsed.urlList.length) throw new Error('有効な webseed が無い（SSRF 防御で除外）')
-  if (maxSize && parsed.length && parsed.length > maxSize) throw new Error('サイズ超過: ' + parsed.length)
+  if (!parsed.urlList.length) throw new Error('no valid webseed (excluded by SSRF defense)')
+  if (maxSize && parsed.length && parsed.length > maxSize) throw new Error('size exceeded: ' + parsed.length)
   return new Promise((resolve, reject) => {
     const client = new WebTorrent({ dht: false, lsd: false, tracker: false })
     const t = client.add(parsed, { path: outDir, announce: [] })
-    const to = setTimeout(() => client.destroy(() => reject(new Error('取得タイムアウト'))), timeoutMs)
+    const to = setTimeout(() => client.destroy(() => reject(new Error('fetch timed out'))), timeoutMs)
     t.on('error', e => { clearTimeout(to); client.destroy(() => reject(e)) })
     t.on('done', () => { clearTimeout(to); const fp = path.join(outDir, t.files[0].name); client.destroy(() => resolve(fp)) })
   })
@@ -47,21 +47,21 @@ export async function mirror({ srcCatalogDir, originBase, dataDir, catalogDir, b
   const files = fs.readdirSync(srcCatalogDir).filter(f => f.endsWith('.json') && f !== 'index.json')
   for (const f of files) {
     let m
-    try { m = JSON.parse(fs.readFileSync(path.join(srcCatalogDir, f), 'utf8')) } catch { out.failed++; console.log('failed (壊れたマニフェスト):', f); continue }
-    if (!isCleared(m)) { out.skipped++; console.log('skip (上流が未審査):', m && m.name); continue }
+    try { m = JSON.parse(fs.readFileSync(path.join(srcCatalogDir, f), 'utf8')) } catch { out.failed++; console.log('failed (corrupt manifest):', f); continue }
+    if (!isCleared(m)) { out.skipped++; console.log('skip (upstream not screened):', m && m.name); continue }
     const name = safeName(m.name)
-    if (!name) { out.failed++; console.log('failed (不正な名前):', m.name); continue }
+    if (!name) { out.failed++; console.log('failed (invalid name):', m.name); continue }
     const torrentPath = path.join(srcCatalogDir, m.infoHash + '.torrent')
-    if (!fs.existsSync(torrentPath)) { out.failed++; console.log('failed (.torrent 無し):', name); continue }
+    if (!fs.existsSync(torrentPath)) { out.failed++; console.log('failed (.torrent missing):', name); continue }
     const q = fs.mkdtempSync(path.join(os.tmpdir(), 'blz-q-'))
     try {
       const fp = await acquire(fs.readFileSync(torrentPath), q, { maxSize: maxSizeBytes, allowLocal: allowLocalWebseed })
-      // 上流を信頼せず、自分で内容アドレスを検証する
-      if (sha256File(fp) !== m.sha256) throw new Error('sha256 不一致')
-      if ((await infohashOf(fp, name)) !== m.infoHash) throw new Error('infohash 不一致')
-      // 自分で再審査する。上流の cleared を信じない（fail-closed）。
+      // Trust no upstream: verify the content address yourself
+      if (sha256File(fp) !== m.sha256) throw new Error('sha256 mismatch')
+      if ((await infohashOf(fp, name)) !== m.infoHash) throw new Error('infohash mismatch')
+      // Re-screen it yourself. Do not trust the upstream's cleared status (fail-closed).
       const scr = screen(m.sha256, blocklist)
-      if (scr.matched) throw new Error('自分の照合で禁止ハッシュに一致')
+      if (scr.matched) throw new Error('matched a blocked hash in your own check')
       const intake = scr.cleared
         ? { status: 'cleared', provider: scr.provider, checkedAt: new Date().toISOString(), by: 'mirror' }
         : { status: 'UNVERIFIED', note: scr.note, by: 'mirror' }
@@ -74,7 +74,7 @@ export async function mirror({ srcCatalogDir, originBase, dataDir, catalogDir, b
       fs.writeFileSync(path.join(catalogDir, m.infoHash + '.torrent'), await torrentWith(dst, name, webseeds))
       const magnet = `magnet:?xt=urn:btih:${m.infoHash}&dn=${encodeURIComponent(name)}` + webseeds.map(w => `&ws=${encodeURIComponent(w)}`).join('')
 
-      // .ots は sha256 に対して検証できたものだけ引き継ぐ。偽の証明を再公開しない。
+      // Carry over the .ots only if it verifies against the sha256. Do not re-publish a fake proof.
       let timestamp = { proof: 'not-carried', file: null }
       const otsSrc = path.join(srcCatalogDir, m.infoHash + '.ots')
       if (fs.existsSync(otsSrc)) {
@@ -88,6 +88,6 @@ export async function mirror({ srcCatalogDir, originBase, dataDir, catalogDir, b
     } catch (e) { out.failed++; console.log('failed:', name, e.message) }
     finally { try { fs.rmSync(q, { recursive: true, force: true }) } catch {} }
   }
-  console.log(`ミラー完了。取得+検証 ${out.mirrored} 件、上流未審査 ${out.skipped} 件、失敗 ${out.failed} 件。`)
+  console.log(`Mirror complete. Fetched+verified ${out.mirrored}, upstream not screened ${out.skipped}, failed ${out.failed}.`)
   return out
 }

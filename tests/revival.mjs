@@ -1,4 +1,4 @@
-// 多ノード蘇生の実証。単一ノードを止めても他ノードから完走する。
+// Demonstration of multi-node revival. Even if one node is stopped, a download completes from another node.
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -30,27 +30,27 @@ async function main() {
   const m = await ingest(f, { webseedBases: [`http://127.0.0.1:${PA}`, `http://127.0.0.1:${PB}`], catalogDir: path.join(d, 'cat'), dataDir: path.join(d, 'data'), stamp: false, blocklist: new Set(['0'.repeat(64)]) })
   const cleared = new Set([m.infoHash])
   const torrentBuf = fs.readFileSync(path.join(d, 'cat', m.infoHash + '.torrent'))
-  console.log(`infohash=${m.infoHash} intake=${m.intake.status} ミラー数=${m.webseeds.length}`)
+  console.log(`infohash=${m.infoHash} intake=${m.intake.status} mirrors=${m.webseeds.length}`)
 
   let A = await serve(path.join(d, 'data'), cleared, PA)
   const B = await serve(path.join(d, 'data'), cleared, PB)
 
   const r1 = await webseedOnly(torrentBuf, path.join(d, 'out1'))
   const p1 = r1.done && r1.sha === originSha
-  console.log(`1) 両オリジン稼働・peerゼロ        : ${p1 ? 'PASS 完走・ハッシュ一致' : 'FAIL'}`)
+  console.log(`1) Both origins up, zero peers   : ${p1 ? 'PASS completed, hash matches' : 'FAIL'}`)
 
   await new Promise(r => A.close(r))
   const r2 = await webseedOnly(torrentBuf, path.join(d, 'out2'))
   const p2 = r2.done && r2.sha === originSha
-  console.log(`2) オリジンA停止・Bのみ            : ${p2 ? 'PASS 別ノードから完走' : 'FAIL'}`)
+  console.log(`2) Origin A stopped, B only      : ${p2 ? 'PASS completed from another node' : 'FAIL'}`)
 
   await new Promise(r => B.close(r))
   const r3 = await webseedOnly(torrentBuf, path.join(d, 'out3'), 8000)
   const p3 = !r3.done
-  console.log(`3) 両方停止（保持者ゼロ）          : ${p3 ? 'PASS 完走せず（正直な限界）' : 'FAIL'}`)
+  console.log(`3) Both stopped (zero holders)   : ${p3 ? 'PASS did not complete (an honest limitation)' : 'FAIL'}`)
 
   const ok = p1 && p2 && p3
-  console.log(`\n総合: ${ok ? 'PASS 単一ノードの喪失を生き延びる' : 'FAIL'}`)
+  console.log(`\nOverall: ${ok ? 'PASS survives the loss of a single node' : 'FAIL'}`)
   process.exit(ok ? 0 : 1)
 }
 main()

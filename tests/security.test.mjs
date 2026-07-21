@@ -13,7 +13,7 @@ async function start(dataDir, clearedSet) {
   return { server, base: `http://127.0.0.1:${server.address().port}` }
 }
 
-test('origin: cleared の infohash だけ配る、未cleared は404', async () => {
+test('origin: serves only cleared infohashes, 404 for non-cleared', async () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'blz-o-'))
   fs.mkdirSync(path.join(d, IH), { recursive: true }); fs.writeFileSync(path.join(d, IH, 'f.txt'), 'hello')
   const other = 'b'.repeat(40)
@@ -21,12 +21,12 @@ test('origin: cleared の infohash だけ配る、未cleared は404', async () =
   const { server, base } = await start(d, new Set([IH]))
   try {
     assert.equal((await fetch(`${base}/${IH}/f.txt`)).status, 200)
-    assert.equal((await fetch(`${base}/${other}/f.txt`)).status, 404) // 未cleared は配らない
+    assert.equal((await fetch(`${base}/${other}/f.txt`)).status, 404) // non-cleared is not served
     assert.equal((await fetch(`${base}/`)).status, 404)
   } finally { server.close() }
 })
 
-test('origin: パストラバーサルは404', async () => {
+test('origin: path traversal returns 404', async () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'blz-o2-'))
   fs.mkdirSync(path.join(d, IH), { recursive: true }); fs.writeFileSync(path.join(d, IH, 'f.txt'), 'x')
   fs.writeFileSync(path.join(d, 'sibling.txt'), 'SECRET')
@@ -37,7 +37,7 @@ test('origin: パストラバーサルは404', async () => {
   } finally { server.close() }
 })
 
-test('origin: 不正エンコードは400、変なRangeは416、suffix Range は206', async () => {
+test('origin: bad encoding => 400, weird Range => 416, suffix Range => 206', async () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'blz-o3-'))
   fs.mkdirSync(path.join(d, IH), { recursive: true }); fs.writeFileSync(path.join(d, IH, 'f.txt'), '0123456789')
   const { server, base } = await start(d, new Set([IH]))

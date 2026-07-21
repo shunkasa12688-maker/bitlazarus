@@ -6,8 +6,8 @@ import path from 'node:path'
 import { ingest } from '../src/core.mjs'
 import { upgradeCatalog } from '../src/upgrade.mjs'
 
-// ネットワークに触らない。.ots が無い（--no-timestamp）カタログでの挙動を固定する。
-test('upgradeCatalog: .ots が無ければ何もしない', async () => {
+// Never touch the network. Pin the behavior on a catalog with no .ots (--no-timestamp).
+test('upgradeCatalog: does nothing when there is no .ots', async () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'blz-up-'))
   const f = path.join(d, 'a.txt'); fs.writeFileSync(f, 'x')
   await ingest(f, { webseedBase: 'http://o', catalogDir: path.join(d, 'cat'), dataDir: path.join(d, 'data'), stamp: false, blocklist: new Set(['0'.repeat(64)]) })
@@ -17,7 +17,7 @@ test('upgradeCatalog: .ots が無ければ何もしない', async () => {
   assert.equal(r.results.length, 0)
 })
 
-test('upgradeCatalog: 存在しないカタログでも落ちない', async () => {
+test('upgradeCatalog: does not crash on a nonexistent catalog', async () => {
   const r = await upgradeCatalog(path.join(os.tmpdir(), 'blz-nope-' + process.pid))
   assert.equal(r.results.length, 0)
 })
