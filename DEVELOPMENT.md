@@ -7,7 +7,9 @@ Keep it small, guard it with tests, and auto-verify on every CI run. Humans judg
 ```
 blz/
   bin/blz.mjs        CLI entry point. Error handling and display only. Holds no logic.
-  src/core.mjs       Ingest and verify. Content addressing, SHA-256, manifest.
+  src/core.mjs       Ingest (single + directory batch) and verify. Content addressing, SHA-256, manifest.
+  src/intake.mjs     Intake gate. Composable providers: exact SHA-256 denylist + perceptual dHash.
+  src/phash.mjs      Reference perceptual hash (dHash) and Netpbm decoder. The plug-in boundary.
   src/timestamp.mjs  OpenTimestamps proof of existence. Best-effort.
   src/seed.mjs       Anchor node. WebSeed origin and seeding.
   tests/             node:test automated tests. Never touch the network.
@@ -44,6 +46,8 @@ node bin/blz.mjs seed --port 6969
 2. Catalog publishing and independent mirrors. If the operator disappears, another operator keeps it alive. `blz index`, `blz mirror`, and the Dockerfile. `npm run test:mirror`
 3. Intake gate. Fail-closed matching against known blocked hashes. `blz ingest --blocklist`. `seed` serves only cleared items.
 4. Folding OpenTimestamps into confirmations. `blz upgrade`.
+5. Directory batch ingest. `blz ingest <dir> -r`. Each file is its own item, screened independently; a blocked file is rejected without aborting the batch. Symlinks are not followed.
+6. Composable intake providers. A reject-only perceptual (dHash) gate behind `--phash-blocklist`, alongside the exact SHA-256 denylist. Reference implementation only — a licensed PhotoDNA/Thorn provider plugs in at `src/phash.mjs` (`decodeImage`) and `src/intake.mjs` (`screenPerceptual`). No real hashes and no classifier ever ship here.
 
 ## Scheduling timestamp upgrades
 
@@ -57,6 +61,6 @@ To run it resident: `node bin/blz.mjs upgrade --watch 1440` (once a day).
 
 ## Next stage (needed before production use)
 
-- Wire intake matching to a real PhotoDNA / NCMEC / Thorn provider. This assumes NCMEC ESP registration and legal counsel.
+- Wire intake matching to a real PhotoDNA / NCMEC / Thorn provider. The interface exists (`screenPerceptual` in `src/intake.mjs`, `decodeImage` in `src/phash.mjs`); replace the reference dHash/Netpbm code with the licensed provider. This assumes NCMEC ESP registration and legal counsel.
 - Obtain legal standing under a fiscal sponsor (e.g. CS&S). See ../OPERATING_PLAN.md for details.
 - Mirror the catalog in an actual public git repository.

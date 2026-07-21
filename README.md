@@ -21,6 +21,14 @@ We prove only **existence and integrity**: that this bitstream existed at time T
 blz ingest <file> --webseed http://your-origin
   -> Content-address, SHA-256, OpenTimestamps, WebSeed magnet, and certificate.
 
+blz ingest <directory> -r --webseed http://your-origin
+  -> Batch. Every file becomes its own content-addressed item, each screened
+     independently. A blocked file is rejected without aborting the rest.
+
+blz ingest <file> --blocklist bad-sha256.txt --phash-blocklist bad-phash.txt
+  -> Run both intake gates: the exact SHA-256 denylist and the perceptual
+     (dHash) reject-only image gate.
+
 blz verify <manifest.json> <file>
   -> Re-verify the infohash, SHA-256, and OpenTimestamps. Tampering is detected instantly.
 
@@ -31,6 +39,13 @@ blz seed --port 6969
 ## Mandatory intake gate (non-negotiable)
 
 Before any public seeding, everything must pass industry-standard CSAM hash matching (PhotoDNA / NCMEC / Thorn). We never build our own classifier. Intake is limited to vetted partner sources. We do not open a public upload endpoint. For a US-based operator, reporting to NCMEC on detection is a legal obligation; we handle this with a lawyer. Today the `intake` field is UNVERIFIED and `seed` prints a warning. We do not seed publicly until real matching is integrated.
+
+The gate is built from composable providers so a licensed provider drops in without touching the serving path:
+
+- **Exact SHA-256 denylist** (`--blocklist`) — the primary gate; decides `cleared` vs `UNVERIFIED`. Fail-closed: an empty or missing list never clears anything.
+- **Perceptual dHash** (`--phash-blocklist`) — a *reject-only* gate that catches a near-duplicate of a known blocked image within a Hamming-distance threshold. It can only block; it never clears an item on its own, so adding it can only make intake stricter. This is a fuzzy fingerprint matched against known-bad hashes — **not a classifier**.
+
+The shipped perceptual code is a **reference implementation** (a dependency-free dHash over a Netpbm decoder) that proves the interface and is fully tested. It is not PhotoDNA. In production you swap in a licensed decoder and provider behind the same interface. This repo ships **no real CSAM hashes** and no predictive model.
 
 ## Honest limitations
 

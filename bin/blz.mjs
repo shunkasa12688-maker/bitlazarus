@@ -1,24 +1,33 @@
 #!/usr/bin/env node
 import { Command } from 'commander'
 import path from 'node:path'
-import { ingest, verify } from '../src/core.mjs'
-import { loadBlocklist } from '../src/intake.mjs'
+import fs from 'node:fs'
+import { ingest, ingestDir, verify } from '../src/core.mjs'
+import { loadBlocklist, loadPhashBlocklist } from '../src/intake.mjs'
 
 const program = new Command()
 program.name('blz').description('BitLazarus — a tool to revive dead records, address them by content, and prove existence').version('0.1.0')
 
 program.command('ingest')
-  .argument('<file>', 'File to ingest')
+  .argument('<path>', 'File to ingest, or a directory (batch: each file becomes its own item)')
   .option('--webseed <url>', 'WebSeed origin (repeat for multi-node redundancy)', (v, acc) => acc.concat(v), [])
   .option('--catalog <dir>', 'Catalog location', './catalog')
   .option('--data <dir>', 'Where bytes are stored (root of the WebSeed origin)', './data')
   .option('--blocklist <file>', 'List of known blocked hashes (SHA-256). Required for public operation')
+  .option('--phash-blocklist <file>', 'Perceptual-hash blocklist (dHash, 16-hex per line). Reject-only image gate')
+  .option('--phash-threshold <bits>', 'Max Hamming distance for a perceptual match', '10')
+  .option('-r, --recursive', 'When <path> is a directory, descend into subdirectories')
   .option('--no-timestamp', 'Do not stamp with OpenTimestamps (for offline use)')
-  .action(run(async (file, o) => {
+  .action(run(async (target, o) => {
     const bases = o.webseed.length ? o.webseed : ['http://localhost:6969']
     const blocklist = loadBlocklist(o.blocklist)
     if (o.blocklist && !blocklist) console.error('Warning: the blocklist has 0 valid SHA-256 entries. Treating as UNVERIFIED instead of cleared.')
-    printCert(await ingest(file, { webseedBases: bases, catalogDir: o.catalog, dataDir: o.data, stamp: o.timestamp, blocklist }), o.catalog)
+    const phashBlocklist = loadPhashBlocklist(o.phashBlocklist)
+    if (o.phashBlocklist && !phashBlocklist) console.error('Warning: the perceptual blocklist has 0 valid entries. The perceptual gate is disabled.')
+    const opts = { webseedBases: bases, catalogDir: o.catalog, dataDir: o.data, stamp: o.timestamp, blocklist, phashBlocklist, phashThreshold: Number(o.phashThreshold) }
+    if (!fs.existsSync(target)) throw new Error('path not found: ' + target)
+    if (fs.statSync(target).isDirectory()) printBatch(await ingestDir(target, { ...opts, recursive: !!o.recursive }), o.catalog)
+    else printCert(await ingest(target, opts), o.catalog)
   }))
 
 program.command('verify')
@@ -96,6 +105,23 @@ function run(fn) {
     try { await fn(...a) }
     catch (e) { console.error('Error:', e && e.message || e); process.exit(1) }
   }
+}
+
+function printBatch(res, catalog) {
+  console.log(`
+========== BitLazarus batch ingest ==========
+ Root      : ${res.root}
+ Scanned   : ${res.scanned} file(s)
+ Ingested  : ${res.items.length}
+ Rejected  : ${res.rejected.length} (intake gate)
+ Failed    : ${res.failed.length}
+---------------------------------------------`)
+  for (const m of res.items) console.log(`  OK    ${m.infoHash}  ${m.intake.status.padEnd(10)}  ${m.name}`)
+  for (const r of res.rejected) console.log(`  BLOCK ${r.file}\n          ${r.reason}`)
+  for (const f of res.failed) console.log(`  ERR   ${f.file}\n          ${f.reason}`)
+  console.log(` Catalog   : ${catalog}
+=============================================
+`)
 }
 
 function printCert(m, catalog) {

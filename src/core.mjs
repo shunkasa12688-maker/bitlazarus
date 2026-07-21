@@ -10,7 +10,7 @@ import crypto from 'node:crypto'
 import createTorrent from 'create-torrent'
 import parseTorrent from 'parse-torrent'
 import { stampSha256, verifyOts } from './timestamp.mjs'
-import { screen } from './intake.mjs'
+import { screen, screenPerceptual } from './intake.mjs'
 
 export const PIECE_LENGTH = 262144 // Fixed 256 KiB, to keep the infohash deterministic
 
@@ -43,7 +43,7 @@ export async function infohashOf(filePath, name) {
   return (await parseTorrent(await torrentFor(filePath, name, []))).infoHash
 }
 
-export async function ingest(filePath, { webseedBase, webseedBases, catalogDir, dataDir, stamp = true, blocklist = null }) {
+export async function ingest(filePath, { webseedBase, webseedBases, catalogDir, dataDir, stamp = true, blocklist = null, phashBlocklist = null, phashThreshold = 10 }) {
   if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) throw new Error('file not found: ' + filePath)
   const bases = (webseedBases && webseedBases.length) ? webseedBases : (webseedBase ? [webseedBase] : [])
   if (!bases.length) throw new Error('a --webseed origin URL is required (repeat for multi-node redundancy)')
@@ -56,9 +56,15 @@ export async function ingest(filePath, { webseedBase, webseedBases, catalogDir, 
   // Intake gate. If it matches a known blocked hash, do not publish (fail-closed, rejected before anything is written).
   const scr = screen(sha256, blocklist)
   if (scr.matched) throw new Error('intake rejected: matched a known blocked hash (' + scr.provider + '). Not publishing.')
+
+  // Perceptual gate (reject-only). Blocks a near-duplicate of a known blocked image; never clears on its own.
+  const per = screenPerceptual(filePath, phashBlocklist, phashThreshold)
+  if (per.matched) throw new Error('intake rejected: perceptual-hash match to a known blocked image (distance ' + per.distance + ' <= ' + per.threshold + ', ' + per.provider + '). Not publishing.')
+
   const intake = scr.cleared
     ? { status: 'cleared', provider: scr.provider, checkedAt: new Date().toISOString() }
     : { status: 'UNVERIFIED', note: scr.note }
+  if (per.ran) intake.perceptual = { provider: per.provider, threshold: per.threshold, distance: per.distance, matched: false }
 
   const infoHash = await infohashOf(filePath, name)
 
@@ -88,6 +94,40 @@ export async function ingest(filePath, { webseedBase, webseedBases, catalogDir, 
   }
   fs.writeFileSync(path.join(catalogDir, infoHash + '.json'), JSON.stringify(manifest, null, 2))
   return manifest
+}
+
+// Batch ingest a directory. Each contained file becomes its OWN content-addressed item,
+// screened fail-closed independently — so one blocked file is rejected without aborting the
+// batch or contaminating the rest. This is not a single multi-file torrent (that would move
+// screening off the per-file boundary). Symlinks are not followed (loop/escape safety).
+export async function ingestDir(dirPath, { recursive = false, ...opts } = {}) {
+  if (!fs.existsSync(dirPath) || !fs.statSync(dirPath).isDirectory()) throw new Error('not a directory: ' + dirPath)
+  const files = listFiles(dirPath, recursive)
+  const items = [], rejected = [], failed = []
+  for (const f of files) {
+    try { items.push(await ingest(f, opts)) }
+    catch (e) {
+      const reason = e && e.message || String(e)
+      ;(/^intake rejected/.test(reason) ? rejected : failed).push({ file: f, reason })
+    }
+  }
+  return { batch: true, root: path.resolve(dirPath), scanned: files.length, items, rejected, failed }
+}
+
+// Deterministic, symlink-safe listing of regular files under dir.
+function listFiles(dir, recursive) {
+  const out = []
+  const walk = (d) => {
+    const entries = fs.readdirSync(d, { withFileTypes: true }).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
+    for (const e of entries) {
+      if (e.isSymbolicLink()) continue // never follow symlinks: avoids loops and escaping the tree
+      const full = path.join(d, e.name)
+      if (e.isDirectory()) { if (recursive) walk(full) }
+      else if (e.isFile()) out.push(full)
+    }
+  }
+  walk(dir)
+  return out
 }
 
 // Return integrity (sha256+infohash) and proof of existence (OpenTimestamps) separately.
